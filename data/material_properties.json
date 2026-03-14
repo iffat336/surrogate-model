@@ -1,0 +1,129 @@
+{
+  "materials": {
+    "AAC": {
+      "name": "Autoclaved Aerated Concrete",
+      "description": "Lightweight porous concrete with low thermal conductivity",
+      "density_range": [400, 700],
+      "porosity_range": [0.4, 0.8],
+      "E0_dry_range": [2.0, 5.0],
+      "E0_saturated_range": [0.5, 1.5],
+      "moisture_sensitivity_alpha": [0.15, 0.35],
+      "strength_capillary": 0.8,
+      "critical_stiffness": 1.2,
+      "research_areas": [
+        "Structural homogenization",
+        "Hygrothermal coupling",
+        "Building materials"
+      ],
+      "applications": [
+        "Lightweight building blocks",
+        "Thermal insulation",
+        "Seismic applications"
+      ]
+    },
+    "Cardboard": {
+      "name": "Kraft Cardboard / Recycled Fiber",
+      "description": "Cellulose-based bio-degradable packaging material",
+      "density_range": [700, 1000],
+      "porosity_range": [0.3, 0.6],
+      "E0_dry_range": [3.0, 8.0],
+      "E0_saturated_range": [0.8, 2.0],
+      "moisture_sensitivity_alpha": [0.25, 0.45],
+      "strength_capillary": 0.6,
+      "critical_stiffness": 0.8,
+      "research_areas": [
+        "Bio-based materials",
+        "Packaging design",
+        "Compostability"
+      ],
+      "applications": [
+        "Compostable agricultural containers",
+        "Seed packaging",
+        "Plant-based shipping"
+      ]
+    },
+    "Bio-Composite": {
+      "name": "Plant Fiber Reinforced Composite",
+      "description": "Natural fiber (straw, flax, hemp) reinforced bio-polymer matrix",
+      "density_range": [500, 900],
+      "porosity_range": [0.25, 0.55],
+      "E0_dry_range": [2.5, 7.0],
+      "E0_saturated_range": [0.6, 1.8],
+      "moisture_sensitivity_alpha": [0.3, 0.5],
+      "strength_capillary": 0.5,
+      "critical_stiffness": 1.0,
+      "research_areas": [
+        "Biosystems engineering",
+        "Agricultural materials",
+        "Sustainability"
+      ],
+      "applications": [
+        "Grow substrates",
+        "Field storage containers",
+        "Circular economy materials"
+      ]
+    }
+  },
+  "agricultural_scenarios": {
+    "scenario_1": {
+      "name": "Seed Germination Substrate",
+      "material": "Bio-Composite",
+      "description": "Straw-based growing medium under controlled irrigation",
+      "parameters": {
+        "RH": 75,
+        "temperature": 22,
+        "load_magnitude": 0.5,
+        "exposure_time": 7
+      },
+      "use_case": "Initial seed germination phase"
+    },
+    "scenario_2": {
+      "name": "Cardboard Packaging in Rain",
+      "material": "Cardboard",
+      "description": "Agricultural product packaging exposed to intermittent rain",
+      "parameters": {
+        "RH": 85,
+        "temperature": 20,
+        "load_magnitude": 2.0,
+        "exposure_time": 14
+      },
+      "use_case": "Field storage before shipment"
+    },
+    "scenario_3": {
+      "name": "AAC Grow Block Saturation",
+      "material": "AAC",
+      "description": "Hydroponic AAC blocks during growing season with daily water cycling",
+      "parameters": {
+        "RH": 92,
+        "temperature": 25,
+        "load_magnitude": 1.5,
+        "exposure_time": 21
+      },
+      "use_case": "Hydroponic cultivation system"
+    },
+    "scenario_4": {
+      "name": "Long-term Field Storage",
+      "material": "AAC",
+      "description": "Seed storage blocks in ambient outdoor conditions",
+      "parameters": {
+        "RH": 65,
+        "temperature": 18,
+        "load_magnitude": 1.0,
+        "exposure_time": 30
+      },
+      "use_case": "Winter storage in uncontrolled environment"
+    },
+    "scenario_5": {
+      "name": "Compostable Container Degradation",
+      "material": "Bio-Composite",
+      "description": "Plant-based container in composting conditions (high moisture)",
+      "parameters": {
+        "RH": 95,
+        "temperature": 28,
+        "load_magnitude": 0.3,
+        "exposure_time": 20
+      },
+      "use_case": "End-of-life composting phase"
+    }
+  }
+}
