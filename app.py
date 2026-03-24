@@ -116,6 +116,39 @@ def get_safety_status(e_current, critical_stiffness):
     return "FAILED", "darkred"
 
 
+def build_feature_frame(
+    porosity,
+    density,
+    thermal_cond,
+    diffusivity,
+    e0_dry,
+    alpha_e,
+    nu,
+    rh_exposure,
+    temperature,
+    thickness,
+    load_magnitude,
+    exposure_time,
+):
+    """Create a feature frame in the training-column order."""
+    return pd.DataFrame(
+        {
+            "porosity": [porosity],
+            "density": [density],
+            "thermal_cond": [thermal_cond],
+            "moisture_diffusivity": [diffusivity],
+            "E0_dry": [e0_dry],
+            "E_sensitivity_to_moisture": [alpha_e],
+            "nu": [nu],
+            "RH_exposure": [rh_exposure],
+            "temperature": [temperature],
+            "thickness": [thickness],
+            "load_magnitude": [load_magnitude],
+            "exposure_time_days": [exposure_time],
+        }
+    )
+
+
 gp_model, rf_model, scaler, models_loaded = load_models()
 material_db = load_material_props()
 
@@ -341,23 +374,22 @@ feature_cols = [
     "exposure_time_days",
 ]
 
-x_input = np.array(
-    [[
-        porosity,
-        density,
-        thermal_cond,
-        diffusivity,
-        e0_dry,
-        alpha_e,
-        nu,
-        rh_exposure,
-        temperature,
-        thickness,
-        load_magnitude,
-        exposure_time,
-    ]]
+feature_frame = build_feature_frame(
+    porosity=porosity,
+    density=density,
+    thermal_cond=thermal_cond,
+    diffusivity=diffusivity,
+    e0_dry=e0_dry,
+    alpha_e=alpha_e,
+    nu=nu,
+    rh_exposure=rh_exposure,
+    temperature=temperature,
+    thickness=thickness,
+    load_magnitude=load_magnitude,
+    exposure_time=exposure_time,
 )
-x_scaled = scaler.transform(x_input)
+x_input = feature_frame[feature_cols].to_numpy()
+x_scaled = scaler.transform(feature_frame[feature_cols])
 
 if selected_scenario is not None:
     scenario_label = (
@@ -500,6 +532,55 @@ with tab1:
         "degradation indicators -> engineering relevance."
     )
 
+    st.markdown("**Graph: stiffness comparison for the active scenario**")
+    stiffness_chart_df = pd.DataFrame(
+        {
+            "State": ["Dry stiffness", "GP wet stiffness", "RF wet stiffness", "Critical threshold"],
+            "GPa": [e0_dry, e_pred_gp, e_pred_rf, critical_stiffness],
+        }
+    ).set_index("State")
+    st.bar_chart(stiffness_chart_df)
+    st.caption(
+        "Interpretation: this graph compares the dry baseline, the predicted wet response, and the "
+        "critical threshold. It helps show how much stiffness is lost under moisture exposure and "
+        "whether the predicted wet state remains safely above the threshold."
+    )
+
+    rh_values = np.arange(30, 96, 5)
+    rh_sweep_frame = pd.DataFrame(
+        {
+            "porosity": porosity,
+            "density": density,
+            "thermal_cond": thermal_cond,
+            "moisture_diffusivity": diffusivity,
+            "E0_dry": e0_dry,
+            "E_sensitivity_to_moisture": alpha_e,
+            "nu": nu,
+            "RH_exposure": rh_values,
+            "temperature": temperature,
+            "thickness": thickness,
+            "load_magnitude": load_magnitude,
+            "exposure_time_days": exposure_time,
+        }
+    )
+    rh_scaled = scaler.transform(rh_sweep_frame[feature_cols])
+    gp_rh_mean, _ = gp_model.predict(rh_scaled, return_std=True)
+    rf_rh_mean = rf_model.predict(rh_scaled)
+    rh_chart_df = pd.DataFrame(
+        {
+            "Relative Humidity (%)": rh_values,
+            "Gaussian Process": gp_rh_mean,
+            "Random Forest": rf_rh_mean,
+        }
+    ).set_index("Relative Humidity (%)")
+    st.markdown("**Graph: predicted wet stiffness across humidity levels**")
+    st.line_chart(rh_chart_df)
+    st.caption(
+        "Interpretation: this graph shows how the predicted wet stiffness changes as relative humidity "
+        "increases while the other conditions stay fixed. The main message is that environmental "
+        "exposure and baseline material properties interact in the prediction workflow."
+    )
+
 with tab2:
     st.write("**Illustrative feature ranking from the synthetic benchmark**")
     sensitivity_df = pd.DataFrame(
@@ -523,6 +604,19 @@ with tab2:
         not a universal scientific conclusion. The main point is that baseline stiffness,
         moisture transport, and environmental exposure interact in the prediction workflow.
         """
+    )
+    st.caption(
+        "Table interpretation: the ranking suggests that dry baseline stiffness dominates this benchmark, "
+        "while load, diffusivity, relative humidity, and moisture sensitivity provide the coupled "
+        "environmental-mechanical contribution to the final prediction."
+    )
+    feature_chart_df = sensitivity_df.set_index("Parameter")[["Importance"]]
+    st.markdown("**Graph: feature-importance profile**")
+    st.bar_chart(feature_chart_df)
+    st.caption(
+        "Interpretation: this graph visualizes the same benchmark ranking in a more intuitive way. "
+        "It helps explain that the model is driven first by baseline stiffness, then by moisture- and "
+        "load-related factors, rather than by geometry alone."
     )
 
 with tab3:
@@ -551,6 +645,11 @@ with tab3:
         }
     )
     st.dataframe(material_props, use_container_width=True)
+    st.caption(
+        "Table interpretation: this table summarizes the active material state used in the current scenario. "
+        "It is useful for linking the prediction to physically meaningful descriptors such as porosity, "
+        "density, diffusivity, and moisture sensitivity."
+    )
 
     if porosity > 0.5 and density < 650:
         inferred_type = "Highly porous wall-material analogue"
@@ -564,6 +663,36 @@ with tab3:
     st.write(", ".join(current_material["research_areas"]))
     st.write("**Representative applications**")
     st.write(", ".join(current_material["applications"]))
+
+    normalized_props_df = pd.DataFrame(
+        {
+            "Property": ["Porosity", "Density", "Thermal Cond.", "Diffusivity", "Dry Stiffness", "Moisture Sens."],
+            "Normalized value": [
+                porosity,
+                (density - current_material["density_range"][0])
+                / max(current_material["density_range"][1] - current_material["density_range"][0], 1),
+                (thermal_cond - 0.05) / 0.30,
+                (
+                    np.log10(diffusivity) - np.log10(1e-8)
+                ) / max(np.log10(1e-6) - np.log10(1e-8), 1e-6),
+                (e0_dry - current_material["E0_dry_range"][0])
+                / max(current_material["E0_dry_range"][1] - current_material["E0_dry_range"][0], 1e-6),
+                (alpha_e - current_material["moisture_sensitivity_alpha"][0])
+                / max(
+                    current_material["moisture_sensitivity_alpha"][1]
+                    - current_material["moisture_sensitivity_alpha"][0],
+                    1e-6,
+                ),
+            ],
+        }
+    ).set_index("Property")
+    st.markdown("**Graph: normalized material profile for the active case**")
+    st.bar_chart(normalized_props_df)
+    st.caption(
+        "Interpretation: this graph shows where the current case sits within its material-property ranges. "
+        "It helps explain whether the selected case represents a lighter, denser, more moisture-sensitive, "
+        "or stiffer part of the chosen material family."
+    )
 
 with tab4:
     st.header("Research-facing use cases")
