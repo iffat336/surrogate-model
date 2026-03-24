@@ -21,6 +21,27 @@
         "Seismic applications"
       ]
     },
+    "Perlite-Concrete": {
+      "name": "Perlite Concrete Block",
+      "description": "Porous lightweight building material with strong moisture-performance coupling",
+      "density_range": [350, 650],
+      "porosity_range": [0.45, 0.82],
+      "E0_dry_range": [1.5, 4.0],
+      "E0_saturated_range": [0.4, 1.2],
+      "moisture_sensitivity_alpha": [0.18, 0.38],
+      "strength_capillary": 0.7,
+      "critical_stiffness": 1.0,
+      "research_areas": [
+        "Hygrothermal performance",
+        "Moisture permeability",
+        "Durability of wall materials"
+      ],
+      "applications": [
+        "Energy-efficient wall systems",
+        "Moisture-risk screening",
+        "Digital-twin benchmarking"
+      ]
+    },
     "Cardboard": {
       "name": "Kraft Cardboard / Recycled Fiber",
       "description": "Cellulose-based bio-degradable packaging material",
@@ -90,28 +111,28 @@
       "use_case": "Field storage before shipment"
     },
     "scenario_3": {
-      "name": "AAC Grow Block Saturation",
+      "name": "AAC Hygrothermal Exposure",
       "material": "AAC",
-      "description": "Hydroponic AAC blocks during growing season with daily water cycling",
+      "description": "Porous AAC element exposed to strong moisture cycling and moderate mechanical demand",
       "parameters": {
         "RH": 92,
         "temperature": 25,
         "load_magnitude": 1.5,
         "exposure_time": 21
       },
-      "use_case": "Hydroponic cultivation system"
+      "use_case": "Durability screening under hygrothermal loading"
     },
     "scenario_4": {
-      "name": "Long-term Field Storage",
-      "material": "AAC",
-      "description": "Seed storage blocks in ambient outdoor conditions",
+      "name": "Perlite Concrete Wall Element",
+      "material": "Perlite-Concrete",
+      "description": "Porous wall material under elevated humidity and moderate thermal load",
       "parameters": {
-        "RH": 65,
-        "temperature": 18,
+        "RH": 80,
+        "temperature": 24,
         "load_magnitude": 1.0,
         "exposure_time": 30
       },
-      "use_case": "Winter storage in uncontrolled environment"
+      "use_case": "Moisture permeability and thermal-performance discussion"
     },
     "scenario_5": {
       "name": "Compostable Container Degradation",
