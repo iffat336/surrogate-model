@@ -374,6 +374,86 @@ feature_cols = [
     "exposure_time_days",
 ]
 
+upload_column_aliases = {
+    "porosity": ["porosity", "porosity_percent", "porosity_pct"],
+    "density": ["density", "density_kg_m3", "density_kg/m3", "density_kg_m^3"],
+    "thermal_cond": ["thermal_cond", "thermal_conductivity", "k", "thermalconductivity"],
+    "moisture_diffusivity": ["moisture_diffusivity", "diffusivity", "moisture_diffusion", "moisture_diffusion_coeff"],
+    "E0_dry": ["e0_dry", "youngs_modulus_dry", "youngs_modulus", "dry_stiffness", "e0"],
+    "E_sensitivity_to_moisture": [
+        "e_sensitivity_to_moisture",
+        "alpha_e",
+        "moisture_sensitivity",
+        "moisture_sensitivity_alpha",
+    ],
+    "nu": ["nu", "poissons_ratio", "poisson_ratio"],
+    "RH_exposure": ["rh_exposure", "rh", "relative_humidity", "relative_humidity_percent"],
+    "temperature": ["temperature", "temp", "temperature_c"],
+    "thickness": ["thickness", "specimen_thickness", "thickness_mm"],
+    "load_magnitude": ["load_magnitude", "load", "stress", "load_mpa"],
+    "exposure_time_days": ["exposure_time_days", "exposure_time", "time_days", "duration_days"],
+}
+
+reference_aliases = [
+    "reference",
+    "target",
+    "e_reference",
+    "e_true",
+    "observed",
+    "e_effective_reference",
+    "e_effective_wet",
+]
+
+
+def canonicalize_column_name(name):
+    """Normalize uploaded CSV headers for alias matching."""
+    return (
+        str(name)
+        .strip()
+        .lower()
+        .replace("%", "percent")
+        .replace("^", "")
+        .replace("/", "_")
+        .replace("\\", "_")
+        .replace("-", "_")
+        .replace(" ", "_")
+        .replace("(", "")
+        .replace(")", "")
+        .replace(".", "")
+    )
+
+
+def prepare_uploaded_dataset(df):
+    """Map uploaded CSV columns to model features where possible."""
+    rename_map = {}
+    canonical_source = {canonicalize_column_name(col): col for col in df.columns}
+    missing = []
+
+    for target_col, aliases in upload_column_aliases.items():
+        matched_original = None
+        for alias in aliases:
+            canonical_alias = canonicalize_column_name(alias)
+            if canonical_alias in canonical_source:
+                matched_original = canonical_source[canonical_alias]
+                break
+        if matched_original is None:
+            missing.append(target_col)
+        else:
+            rename_map[matched_original] = target_col
+
+    mapped_df = df.rename(columns=rename_map).copy()
+    return mapped_df, missing
+
+
+def find_reference_column(df):
+    """Try to detect an uploaded reference-output column for error comparison."""
+    canonical_source = {canonicalize_column_name(col): col for col in df.columns}
+    for alias in reference_aliases:
+        key = canonicalize_column_name(alias)
+        if key in canonical_source:
+            return canonical_source[key]
+    return None
+
 feature_frame = build_feature_frame(
     porosity=porosity,
     density=density,
@@ -728,7 +808,195 @@ with tab4:
     )
 
 with tab5:
-    st.header("Export and Integration")
+    st.header("Dataset Upload, Batch Prediction, and Export")
+
+    st.subheader("CSV Upload for Batch Prediction")
+    st.write(
+        "Upload a CSV file containing one or more scenarios. The app will validate the input columns, "
+        "run surrogate predictions for every row, and let you inspect or download the results."
+    )
+
+    template_df = pd.DataFrame(
+        [
+            {
+                "porosity": 0.55,
+                "density": 520,
+                "thermal_cond": 0.16,
+                "moisture_diffusivity": 1e-7,
+                "E0_dry": 2.8,
+                "E_sensitivity_to_moisture": 0.28,
+                "nu": 0.27,
+                "RH_exposure": 75,
+                "temperature": 24,
+                "thickness": 20,
+                "load_magnitude": 1.5,
+                "exposure_time_days": 14,
+            }
+        ]
+    )
+
+    template_cols = st.columns([1.3, 1.7])
+    with template_cols[0]:
+        st.download_button(
+            "Download Upload Template (CSV)",
+            template_df.to_csv(index=False),
+            "prediction_input_template.csv",
+            mime="text/csv",
+        )
+    with template_cols[1]:
+        required_df = pd.DataFrame(
+            {
+                "Required column": feature_cols,
+                "Example meaning": [
+                    "Void fraction",
+                    "Material density",
+                    "Thermal property",
+                    "Moisture transport coefficient",
+                    "Dry stiffness baseline",
+                    "Moisture sensitivity term",
+                    "Poisson ratio",
+                    "Relative humidity",
+                    "Temperature",
+                    "Sample thickness",
+                    "Mechanical load",
+                    "Exposure duration",
+                ],
+            }
+        )
+        st.dataframe(required_df, use_container_width=True)
+        st.caption(
+            "Table interpretation: these are the model-input features expected by the surrogate workflow. "
+            "If the uploaded CSV contains these columns, or close aliases such as RH or alpha_E, the app "
+            "can map them automatically and run batch prediction."
+        )
+
+    uploaded_file = st.file_uploader(
+        "Upload a prediction dataset (CSV)",
+        type=["csv"],
+        help="Use the template if you want the safest column format.",
+    )
+
+    if uploaded_file is not None:
+        uploaded_df = pd.read_csv(uploaded_file)
+        st.markdown("**Uploaded dataset preview**")
+        st.dataframe(uploaded_df.head(10), use_container_width=True)
+        st.caption(
+            "Table interpretation: this preview helps verify that the uploaded rows look correct before "
+            "the app maps columns and runs surrogate predictions."
+        )
+
+        mapped_df, missing_cols = prepare_uploaded_dataset(uploaded_df)
+        if missing_cols:
+            st.error(
+                "The uploaded file is missing required input columns for prediction: "
+                + ", ".join(missing_cols)
+            )
+            st.info(
+                "Use the template download above, or rename your CSV columns so they match the required "
+                "features or accepted aliases."
+            )
+        else:
+            numeric_df = mapped_df[feature_cols].apply(pd.to_numeric, errors="coerce")
+            valid_mask = ~numeric_df.isna().any(axis=1)
+            dropped_rows = int((~valid_mask).sum())
+            valid_df = numeric_df.loc[valid_mask].copy()
+
+            if dropped_rows > 0:
+                st.warning(
+                    f"{dropped_rows} row(s) were skipped because at least one required field was missing or non-numeric."
+                )
+
+            if valid_df.empty:
+                st.error("No valid rows remain after numeric validation, so batch prediction cannot proceed.")
+            else:
+                uploaded_scaled = scaler.transform(valid_df[feature_cols])
+                gp_batch_mean, gp_batch_std = gp_model.predict(uploaded_scaled, return_std=True)
+                rf_batch_mean = rf_model.predict(uploaded_scaled)
+                ensemble_batch = (gp_batch_mean + rf_batch_mean) / 2.0
+
+                results_batch = mapped_df.loc[valid_df.index].copy()
+                results_batch["GP_Prediction_GPa"] = gp_batch_mean
+                results_batch["GP_95CI_GPa"] = 1.96 * gp_batch_std
+                results_batch["RF_Prediction_GPa"] = rf_batch_mean
+                results_batch["Ensemble_GPa"] = ensemble_batch
+                results_batch["Model_Difference_pct"] = (
+                    np.abs(rf_batch_mean - gp_batch_mean) / np.maximum(np.abs(gp_batch_mean), 1e-6) * 100
+                )
+
+                reference_col = find_reference_column(results_batch)
+                if reference_col is not None:
+                    reference_values = pd.to_numeric(results_batch[reference_col], errors="coerce")
+                    valid_reference_mask = reference_values.notna()
+                    if valid_reference_mask.any():
+                        results_batch.loc[valid_reference_mask, "GP_Abs_Error"] = np.abs(
+                            results_batch.loc[valid_reference_mask, "GP_Prediction_GPa"]
+                            - reference_values.loc[valid_reference_mask]
+                        )
+                        results_batch.loc[valid_reference_mask, "RF_Abs_Error"] = np.abs(
+                            results_batch.loc[valid_reference_mask, "RF_Prediction_GPa"]
+                            - reference_values.loc[valid_reference_mask]
+                        )
+
+                summary_cols = st.columns(4)
+                summary_cols[0].metric("Valid Rows", f"{len(results_batch)}")
+                summary_cols[1].metric("Mean GP Prediction", f"{results_batch['GP_Prediction_GPa'].mean():.3f} GPa")
+                summary_cols[2].metric("Mean RF Prediction", f"{results_batch['RF_Prediction_GPa'].mean():.3f} GPa")
+                summary_cols[3].metric(
+                    "Mean Model Difference",
+                    f"{results_batch['Model_Difference_pct'].mean():.1f}%",
+                )
+
+                st.markdown("**Batch prediction results**")
+                st.dataframe(results_batch.head(50), use_container_width=True)
+                st.caption(
+                    "Table interpretation: this table combines the uploaded scenario data with surrogate predictions "
+                    "for every valid row. It helps compare GP, RF, uncertainty width, and model agreement across "
+                    "multiple cases instead of a single manually entered scenario."
+                )
+
+                trend_df = pd.DataFrame(
+                    {
+                        "Scenario Index": np.arange(1, len(results_batch) + 1),
+                        "Gaussian Process": results_batch["GP_Prediction_GPa"].to_numpy(),
+                        "Random Forest": results_batch["RF_Prediction_GPa"].to_numpy(),
+                        "Ensemble": results_batch["Ensemble_GPa"].to_numpy(),
+                    }
+                ).set_index("Scenario Index")
+                st.markdown("**Graph: batch prediction comparison across uploaded rows**")
+                st.line_chart(trend_df)
+                st.caption(
+                    "Interpretation: this graph shows how the surrogate predictions vary across the uploaded "
+                    "cases. It is useful for spotting agreement, disagreement, and trend changes from one row "
+                    "to another."
+                )
+
+                average_df = pd.DataFrame(
+                    {
+                        "Metric": ["GP mean", "RF mean", "Ensemble mean", "Mean 95% CI"],
+                        "Value": [
+                            results_batch["GP_Prediction_GPa"].mean(),
+                            results_batch["RF_Prediction_GPa"].mean(),
+                            results_batch["Ensemble_GPa"].mean(),
+                            results_batch["GP_95CI_GPa"].mean(),
+                        ],
+                    }
+                ).set_index("Metric")
+                st.markdown("**Graph: batch summary statistics**")
+                st.bar_chart(average_df)
+                st.caption(
+                    "Interpretation: this graph summarizes the overall behavior of the uploaded batch. "
+                    "It helps explain the average prediction level, the average model disagreement, and "
+                    "the typical uncertainty range in a compact way."
+                )
+
+                batch_csv = results_batch.to_csv(index=False)
+                st.download_button(
+                    "Download Batch Predictions (CSV)",
+                    batch_csv,
+                    "batch_predictions.csv",
+                    mime="text/csv",
+                )
+
     export_data = {
         "Material": material_choice,
         "Timestamp": datetime.now().isoformat(),
